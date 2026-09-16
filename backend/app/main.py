@@ -27,7 +27,7 @@ from app.utils.settings import (
 
 
 # ============================================================
-# CREATE FASTAPI APP FIRST
+# CREATE FASTAPI APP
 # ============================================================
 
 app = FastAPI(
@@ -40,14 +40,16 @@ app = FastAPI(
 # CORS
 # ============================================================
 
+# Allow requests from your Netlify frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://aicontract2.netlify.app"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 # ============================================================
 # IN-MEMORY DATABASE
@@ -126,7 +128,10 @@ async def upload_document(
     file: UploadFile = File(...)
 ):
 
+    # --------------------------------------------------------
     # Check file type
+    # --------------------------------------------------------
+
     if not file.filename.lower().endswith(
         (".pdf", ".docx", ".txt")
     ):
@@ -135,7 +140,10 @@ async def upload_document(
             detail="Only PDF, DOCX and TXT files are supported."
         )
 
+    # --------------------------------------------------------
     # Read file
+    # --------------------------------------------------------
+
     file_bytes = await file.read()
 
     if len(file_bytes) == 0:
@@ -149,16 +157,22 @@ async def upload_document(
     # ========================================================
 
     try:
+
         raw_pages = extract_text(
             file.filename,
             file_bytes
         )
 
     except Exception as e:
+
         raise HTTPException(
             status_code=400,
             detail=f"Could not extract text: {e}"
         )
+
+    # --------------------------------------------------------
+    # Clean extracted text
+    # --------------------------------------------------------
 
     pages = [
         {
@@ -172,27 +186,54 @@ async def upload_document(
     # NLP
     # ========================================================
 
-    entities = extract_entities(pages)
+    try:
 
-    clauses = detect_clauses(pages)
+        entities = extract_entities(pages)
+
+        clauses = detect_clauses(pages)
+
+    except Exception as e:
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"NLP processing failed: {e}"
+        )
 
     # ========================================================
     # MACHINE LEARNING
     # ========================================================
 
-    scored_clauses = score_clauses(clauses)
+    try:
 
-    risk_summary = overall_risk_summary(
-        scored_clauses
-    )
+        scored_clauses = score_clauses(clauses)
+
+        risk_summary = overall_risk_summary(
+            scored_clauses
+        )
+
+    except Exception as e:
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Risk analysis failed: {e}"
+        )
 
     # ========================================================
     # RAG
     # ========================================================
 
-    chunks = build_chunks(pages)
+    try:
 
-    index = DocumentIndex(chunks)
+        chunks = build_chunks(pages)
+
+        index = DocumentIndex(chunks)
+
+    except Exception as e:
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"RAG indexing failed: {e}"
+        )
 
     # ========================================================
     # DOCUMENT ID
@@ -247,6 +288,7 @@ def get_document(document_id: str):
     doc = DOCUMENTS.get(document_id)
 
     if not doc:
+
         raise HTTPException(
             status_code=404,
             detail="Document not found."
@@ -265,6 +307,7 @@ def get_entities(document_id: str):
     doc = DOCUMENTS.get(document_id)
 
     if not doc:
+
         raise HTTPException(
             status_code=404,
             detail="Document not found."
@@ -283,6 +326,7 @@ def get_clauses(document_id: str):
     doc = DOCUMENTS.get(document_id)
 
     if not doc:
+
         raise HTTPException(
             status_code=404,
             detail="Document not found."
@@ -301,6 +345,7 @@ def get_risk(document_id: str):
     doc = DOCUMENTS.get(document_id)
 
     if not doc:
+
         raise HTTPException(
             status_code=404,
             detail="Document not found."
@@ -321,23 +366,34 @@ def ask_document(req: AskRequest):
     index = INDEXES.get(req.document_id)
 
     if not doc or index is None:
+
         raise HTTPException(
             status_code=404,
             detail="Document not found."
         )
 
     if not req.question.strip():
+
         raise HTTPException(
             status_code=400,
             detail="Question cannot be empty."
         )
 
-    result = answer_question(
-        index,
-        req.question
-    )
+    try:
 
-    return result
+        result = answer_question(
+            index,
+            req.question
+        )
+
+        return result
+
+    except Exception as e:
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Question answering failed: {e}"
+        )
 
 
 # ============================================================
@@ -370,4 +426,13 @@ def model_evaluation():
     of the risk classifier on a holdout split.
     """
 
-    return evaluate_model()
+    try:
+
+        return evaluate_model()
+
+    except Exception as e:
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Model evaluation failed: {e}"
+        )
